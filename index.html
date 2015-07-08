@@ -1,168 +1,183 @@
-<html>
-	<body>
-		<script src="webgl_fragment_framework.js"></script>
+<script src="scripts/lew/webgl_fragment_framework.js"></script>
 
-		<script id="shader" type="x-shader/x-fragment">
-			/* MODIFIED FROM: WebGL Realtime Raytracer, (c) Lewpen Kinross-Skeels 2011, www.lewpen.com */
-			/* And http://johnvalentine.co.uk/index.php?art=ray2 */
+<script id="shader" type="x-shader/x-fragment">
 
-			#ifdef GL_ES
-				precision mediump float;
-			#endif
+  /* MODIFIED FROM: WebGL Realtime Raytracer, (c) Lewpen Kinross-Skeels 2011, www.lewpen.com */
 
-			varying vec3 vPosition;
-			uniform float uTime;
-			uniform vec2 uMousePos;
+  #ifdef GL_ES
+	precision mediump float;
+	// precision highp float;
+  #endif
+  
+ 
+  varying vec3 vPosition;
+  uniform float uTime;
+  uniform vec2 uMousePos;
 
-			vec3 ray;
-			vec3 dir;
+  vec3 ray;
+  vec3 dir;
 
-			vec4 sphere_pos[3];
-			vec3 sphere_col[3];
+  vec4 sphere_pos[3];
+  vec3 sphere_col[3];
 
-			int count = 0;
-
-			float intersectSphere( in vec3 ray, in vec3 dir, in vec3 sphere_pos, in float radius ) {
-				float a, b, c, d, t1, t2;
-
-				int opt = 1;
-
-				if ( opt == 1 ) {
-					a = dot( dir, dir );
-					b = 2.0 * dot( dir, ray - sphere_pos );
-					c = dot( ray - sphere_pos, ray - sphere_pos ) - radius*radius;
-
-				} else {
-					float dRayx = (ray.x - sphere_pos.x); // distance from camera to sphere centre
-					float dRayy = (ray.y - sphere_pos.y);
-					float dRayz = (ray.z - sphere_pos.z);
-
-					a =   (dir.x * dir.x) + (dir.y * dir.y) + (dir.z * dir.z); // squared length of 'dir'
-					b = ( (dir.x * dRayx) + (dir.y * dRayy) + (dir.z * dRayz) ) * 2.0; // 
-					c =   (dRayx * dRayx) + (dRayy * dRayy) + (dRayz * dRayz) - (radius * radius);
-				}
-
-				d = b * b - 4.0 * a * c;
-
-				if( d <= 0.0 ) return 0.0;
-				d = sqrt(d);
-
-				t2 = (-b + d) / (2.0 * a);
-				t1 = (-b - d) / (2.0 * a);
-
-				if( t1 < t2 ) return t2;
+  float intersectSphere( in vec3 ray, in vec3 dir, in vec3 sphere_pos, in float radius ) {
+  
+	vec3  e = ray - sphere_pos;
+    float a = dot(dir, dir); // squared length of 'dir'
+    float b = dot(dir, e) * 2.0; // 
+    float c = dot(e, e) - (radius * radius);
 	
-				return t1;
+	float d = b * b - 4.0 * a * c;
+
+    if( d <= 0.0 ) return 0.0;
+
+    d = sqrt(d);
+
+    float t2 = (-b + d) / (2.0 * a);
+    float t1 = (-b - d) / (2.0 * a);
+
+    if( t1 < t2 ) return t2;
+    return t1;
+  }
+
+	float iEllipsoid(in vec3 ro, in vec3 rd, in vec3 center, in vec3 radii) {
+		// ellipsoid needs a center point (3D) and 3 radii to be defined.
+		// equation of ellipsoid at coordinate center: (x/rx)^2 + (y/ry)^2 + (z/rz)^2 == 1
+		// where (rx, ry, rz) are the radii in different axes
+		vec3 oc = ro - center;
+		vec3 oc2 = oc*oc;
+		vec3 ocrd = oc*rd;
+		vec3 rd2 = rd*rd;
+		vec3 invRad = 1.0/radii;
+		vec3 invRad2 = invRad*invRad;
+
+		// quadratic equation coefficients
+		float a = dot(rd2, invRad2);
+		float b = dot(ocrd, invRad2) * 2.0;
+		float c = dot(oc2, invRad2) - 1.0;
+
+		float delta = b*b - 4.0*a*c;
+		if (delta>0.0) {
+			return -1.0;
+		}	
+		float t = (-b -sqrt(delta))/(2.0*a);
+		return t;
+	}
+
+	int intersect( in vec3 ray, in vec3 dir, out vec3 col, out vec3 pos, out vec3 normal, out vec3 reflection ) {
+		float max_t = 9.0;
+		int found_i = -1;
+
+		/* Reflective Ellipsoid */
+		vec3 eRadii = 1.0*vec3(1.0, 1.251, 1.0); // x, y, z radii of ellipsoid
+		float t = -iEllipsoid( ray, dir, sphere_pos[0].xyz, eRadii );
+		if( t > 0.00001 && t < max_t ) {
+			max_t = t;
+			found_i = 0;
+			
+			pos = ray + max_t * dir;
+			normal = normalize( (pos-sphere_pos[0].xyz)/(eRadii*eRadii) );
+			reflection = dir - 2.0*normal*dot( dir, normal );
+			col = vec3( 0, 0, 0 ); /* sphere_col[0]; */
+		}
+
+		/* Target Sphere */
+		t = intersectSphere( ray, dir, sphere_pos[1].xyz, sphere_pos[1].w );
+		if( t > 0.00001 && t < max_t ) {
+			max_t = t;
+			found_i = 1;
+			
+			pos = ray + max_t * dir;
+			normal = (pos - sphere_pos[1].xyz) / sphere_pos[1].w;
+			reflection = dir - 2.0*normal*dot( dir, normal );
+			col = vec3(0.5, 0.5, 0.5) * normal + vec3(0.5, 0.5, 0.5);
+		}
+
+		return found_i;
+	}
+
+	void main(void) {
+		sphere_pos[0] = vec4( 0.0, 0, 0.0, 1.0);
+		sphere_col[0] = vec3( 0.0, 0.0, 0.0 );
+
+		sphere_pos[1] = vec4( 0.0, 0.0, 0.0, 0.1 );
+		sphere_col[1] = vec3( 0.7, 0.9, 0.7 );
+
+		ray = normalize (
+			vec3( sin(uTime*0.0332)*0.8, 0.1 + 0.9 * sin(uTime*0.07321), -0.96 )
+		) * 0.999; // changes a little over time
+		float zoom = 1.0 - 0.95 * cos(uTime*0.09411) * cos(uTime*0.01);
+		dir = normalize( vPosition * vec3( zoom, zoom, 1) ); // to zoom, use "normalize( vPosition * vec3( zoom, zoom, 1) )"
+
+		vec3 final_col;
+
+		vec3 col;
+		vec3 pos;
+		vec3 normal;
+		vec3 reflection;
+
+		vec3 newPos = normalize(
+			vec3(
+				sin(uTime*0.04),
+				0.0,
+				cos(uTime*0.04)
+			)
+		) * 0.90; // 1.0 - small sphere radius
+
+		sphere_pos[1] = vec4( newPos.x, newPos.y, newPos.z, sphere_pos[1].w );
+
+		//  Intersect first ray
+
+		int sphere_index = intersect( ray, dir, col, pos, normal, reflection );
+	
+		sphere_index = intersect( pos+reflection*0.00001, reflection, col, pos, normal, reflection );
+		final_col = col;
+		
+		for (int j=512; j>=0; j--) {
+			if( sphere_index == 0 )	{			
+				sphere_index = intersect( pos+reflection*0.00001, reflection, col, pos, normal, reflection );
+				final_col += col;
 			}
+			
+		}
 
-			float iEllipsoid(in vec3 ro, in vec3 rd, in vec3 center, in vec3 radii) {
-				// ellipsoid needs a center point (3D) and 3 radii to be defined.
-				// equation of ellipsoid at coordinate center: (x/rx)^2 + (y/ry)^2 + (z/rz)^2 == 1
-				// where (rx, ry, rz) are the radii in different axes
-				vec3 oc = ro - center;
-				vec3 oc2 = oc*oc;
-				vec3 ocrd = oc*rd;
-				vec3 rd2 = rd*rd;
-				vec3 invRad = 1.0/radii;
-				vec3 invRad2 = invRad*invRad;
+		gl_FragColor = vec4( final_col, 1.0 );
+	}
+</script>
 
-				// quadratic equation coefficients
-				float a = dot(rd2, invRad2);
-				float b = 2.0*dot(ocrd, invRad2);
-				float c = dot(oc2, invRad2) - 1.0;
+<section><div>
 
-				float delta = b*b - 4.0*a*c;
-				if (delta>0.0) {
-					return -1.0;
-				}	
+<h1>Infinite Reflections</h1>
+<div style="display: none;">
+	Size: 
+	<button onclick="size(512,320);">320p</button>
+	<button onclick="size(1152,720);">720p</button> &larr; not yet working.
+</div>
 
-				float t = (-b -sqrt(delta))/(2.0*a);
-				return t;
-			}
+<canvas id="canvas" width="768" height="512" style=""></canvas>
+<div id="status">&nbsp;</div>
 
-			int intersect( in vec3 ray, in vec3 dir, out vec3 col, out vec3 pos, out vec3 normal, out vec3 reflection ) {
-				float max_t = 9.0;
-				int found_i = -1;
+<p>This is a prototype GPU rendering of a coloured target moving around a reflective ellipsoid. Up to 512 bounces are rendered.</p>
+<h3>Version 0.1</h3>
+<ul>
+	<li>Better control scheduling to be friendly to lower-powered browsers
+</ul>
+<h3>Todo:</h3>
+<ul>
+	<li>Allow a UI to vary the animation and control the view.
+</ul>
+<p>Discuss on: <a href="https://plus.google.com/114187364719055671781/posts/jGcP4wQrMap">G+</a>, <a href="https://www.reddit.com/r/shaders/comments/3cfk2f/demo_512deep_raytrace_reflections_target_inside/">reddit</a></p>
 
-				/* Reflective Ellipsoid */
-				vec3 eRadii = 1.0*vec3(1.0, 1.251, 1.0); // x, y, z radii of ellipsoid
-				float t = -iEllipsoid( ray, dir, sphere_pos[0].xyz, eRadii );
-				if( t > 0.0001 && t < max_t ) {
-					max_t = t;
-					found_i = 0;
+</div></section>
 
-					pos = ray + max_t * dir;
-					normal = normalize( (pos-sphere_pos[0].xyz)/(eRadii*eRadii) );
-					reflection = dir - 2.0*normal*dot( dir, normal );
-					col = vec3( 0, 0, 0 ); /* sphere_col[0]; */
-				}
-
-				/* Target Sphere */
-				t = intersectSphere( ray, dir, sphere_pos[1].xyz, sphere_pos[1].w );
-				if( t > 0.0001 && t < max_t ) {
-					max_t = t;
-					found_i = 1;
-
-					pos = ray + max_t * dir;
-					normal = (pos - sphere_pos[1].xyz) / sphere_pos[1].w;
-					reflection = dir - 2.0*normal*dot( dir, normal );
-					col = vec3(0.5, 0.5, 0.5) * normal + vec3(0.5, 0.5, 0.5);
-				}
-
-				return found_i;
-			}
-
-			void main(void) {
-				sphere_pos[0] = vec4( 0.0, 0, 0.0, 1.0);
-				sphere_col[0] = vec3( 0.0, 0.0, 0.0 );
-
-				sphere_pos[1] = vec4( 0.0, 0.0, 0.0, 0.1 );
-				sphere_col[1] = vec3( 0.7, 0.9, 0.7 );
-
-				ray = normalize (
-				vec3( sin(uTime*0.0332)*0.8, 0.1 + 0.9 * sin(uTime*0.07321), -0.96 )
-				) * 0.999; // changes a little over time
-				float zoom = 1.0 - 0.95 * cos(uTime*0.09411) * cos(uTime*0.01);
-				dir = normalize( vPosition * vec3( zoom, zoom, 1) ); // to zoom, use "normalize( vPosition * vec3( zoom, zoom, 1) )"
-
-				vec3 final_col;
-				vec3 col;
-				vec3 pos;
-				vec3 normal;
-				vec3 reflection;
-
-				vec3 newPos = normalize(
-					vec3(
-						sin(uTime*0.04),
-						0.0,
-						cos(uTime*0.04)
-					)
-				) * 0.95; // 1.0 - small sphere radius * 0.5
-
-				sphere_pos[1] = vec4( newPos.x, newPos.y, newPos.z, sphere_pos[1].w );
-
-				//  Intersect first ray
-
-				int sphere_index = intersect( ray,dir, col, pos, normal, reflection );
-
-				sphere_index = intersect( pos+reflection*0.0001, reflection, col, pos, normal, reflection );
-				final_col = col;
-
-				for (int j=1024; j>=0; j--) {
-					if( sphere_index == 0 )	{			
-						sphere_index = intersect( pos+reflection*0.0001, reflection, col, pos, normal, reflection );
-						final_col += col;
-					}
-				}
-
-				gl_FragColor = vec4( final_col, 1.0 );
-			}
-		</script>
-
-		<canvas id="canvas" width="512" height="360" style=""></canvas>
-
-		<div id="status">&nbsp;</div>
-
-		<script>webgl_init( 'canvas', 'shader', 'status' );</script>
-	</body>
-</html>
+<script>
+	function size(w,h) { // not yet used
+		var e = document.getElementById('canvas');
+		e.style.width = w;
+		e.style.height = h;
+		wrapGL.webgl_init( 'canvas', 'shader', 'status' );
+	}
+	
+	wrapGL.webgl_init( 'canvas', 'shader', 'status' );
+	
+</script>
