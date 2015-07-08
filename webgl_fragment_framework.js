@@ -22,8 +22,6 @@ WrapGL = function () {
 	
 	/*	JV's wrapper for webGL, based on above-attributed source,
 			Refactored in namespace object
-			Allows for tidy recompilation
-			Parameterized shader script
 		
 		usage:
 			wrapGL = new WrapGL; // provided here
