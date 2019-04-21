@@ -1,5 +1,7 @@
 ## ray2
 
+Note: a more up-to-date version is shown at http://johnvalentine.co.uk/index.php?art=ray2
+
 Renders a small ball, inside a reflective ellipsiod, producing complicated patterns.
 
 Uses WebGL shaders, which may result in real-time animation: 60fps on a good graphics card [2014]. Works on mobile devices (even Galaxy S3), but typically with limited precision.
